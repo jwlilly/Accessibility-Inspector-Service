@@ -1,4 +1,5 @@
 # Accessibility Inspector
+Be very careful with this service on a device that contains personal information. This service exposes the accessibility node tree through a web socket connection which contains all information visible on the screen. When you are not using this service, disable it from the Accessibility settings. 
 ## What does it do?
 This project is a service that exposes the accessibility tree through json passed over a web socket connection. For visualizing the accessibility tree through a nested list view, check out the [Accessibility Inspector App](https://github.com/jwlilly/Accessibility-Inspector-App) that is built using Electron and Angular. 
 
