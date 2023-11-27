@@ -44,7 +44,7 @@ public class TreeDebug {
     JSONArray windowArray = new JSONArray();
     for (AccessibilityWindowInfo window : windows) {
       JSONObject windowObject = new JSONObject();
-      if (window == null) {
+      if (window == null || !window.isActive()) {
         continue;
       }
 
@@ -119,7 +119,7 @@ public class TreeDebug {
     HashSet<AccessibilityNodeInfoCompat> seen = new HashSet<>();
     HashSet<AccessibilityNodeInfoCompat> seenJson = new HashSet<>();
     AccessibilityNodeInfoCompat compatNode = AccessibilityNodeInfoCompat.obtain(node);
-    logNodeTree(compatNode, "", seen);
+    //logNodeTree(compatNode, "", seen);
     logNodeTreeJson(compatNode, windowObject, seenJson);
     for (AccessibilityNodeInfoCompat n : seen) {
       n.recycle();
@@ -386,6 +386,10 @@ public class TreeDebug {
 
       if (!node.isVisibleToUser()) {
         jsonObject.put("visibility", "invisible");
+      }
+
+      if(!node.isImportantForAccessibility()) {
+        jsonObject.put("importantForAccessibility", false);
       }
 
       Rect rect = new Rect();
