@@ -23,18 +23,20 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Observable;
 import java.util.Observer;
 import java.util.concurrent.Executor;
-
+import java.util.zip.GZIPOutputStream;
 
 
 public class AccessibilityInspector extends AccessibilityService implements Observer {
     private String LOG_TAG = "AccessibilityInspector";
-    private AccessibilityListener listener;
+    private AccessibilityListener captureListener;
+
+    private AccessibilityListener importantListener;
     public AccessibilityInspector _this = this;
-    public SocketConnection socketConnection;
     private JSONObject jsonObject;
     private String screenshot = "";
     private long eventTime = 0;
@@ -60,20 +62,16 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
     @Override
     public void onDestroy() {
         Log.d("ServerSocket", "stopping server");
-        socketConnection.deleteObservers();
-        try {
-            socketConnection.server.stop(1000);
-        } catch (Exception e) {
-            Log.e(LOG_TAG, e.getMessage());
-        }
         super.onDestroy();
     }
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        listener = new AccessibilityListener();
-        registerReceiver(listener, new IntentFilter("A11yInspector"));
+        captureListener = new AccessibilityListener();
+        registerReceiver(captureListener, new IntentFilter("A11yInspector"));
+        importantListener = new AccessibilityListener();
+        registerReceiver(importantListener, new IntentFilter("A11yInspectorImportant"));
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.notificationTimeout = 100;
         info.flags =
@@ -85,23 +83,12 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
         info.eventTypes = AccessibilityEvent.TYPE_ANNOUNCEMENT;
         this.setServiceInfo(info);
-        Log.d("SocketServer", "attempting to start server");
-        socketConnection = SocketConnection.getInstance();
-        socketConnection.setInspector(_this);
-        socketConnection.deleteObservers();
-        socketConnection.addObserver(this);
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
-        Log.d("ServerSocket", "stopping server");
-        socketConnection.deleteObservers();
-        try {
-            socketConnection.server.stop(1000);
-        } catch (Exception e) {
-            Log.e(LOG_TAG, e.getMessage());
-        }
-        unregisterReceiver(listener);
+        unregisterReceiver(captureListener);
+        unregisterReceiver(importantListener);
         return super.onUnbind(intent);
     }
 
@@ -114,39 +101,57 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         @RequiresApi(api = Build.VERSION_CODES.R)
         @Override
         public void onReceive(Context context, Intent intent) {
-            startCapture();
+            if(intent.getAction().equalsIgnoreCase("A11yInspector")) {
+                startCapture();
+            } else if(intent.getAction().equalsIgnoreCase("A11yInspectorImportant")) {
+                toggleShowNotImportant();
+                startCapture();
+            }
         }
     }
     @Override
     public void takeScreenshot(int displayId, @NonNull Executor executor, @NonNull TakeScreenshotCallback callback) {
         super.takeScreenshot(displayId, executor, callback);
     }
-    public void store(Bitmap bm, String fileName) {
-        final String dirPath = Environment.getExternalStorageDirectory()+ "/";
-        File dir = new File(dirPath);
-        if (!dir.exists())
-            dir.mkdirs();
-        File file = new File(dirPath, fileName);
-        try {
-
-
-            FileOutputStream fOut = new FileOutputStream(file);
-            bm.compress(Bitmap.CompressFormat.PNG, 85, fOut);
-            fOut.flush();
-            fOut.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
     public void sendJSON(JSONObject object) {
         jsonObject = object;
     }
     public void sendWithoutScreenshot() {
         try {
-            socketConnection.sendData(jsonObject.toString());
+            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
+            SocketService.data = compress(jsonObject.toString());
+            startService(announcementIntent);
             Log.d(LOG_TAG, "message sent");
         } catch (Exception e) {
             Log.e(LOG_TAG,e.getMessage());
+        }
+    }
+
+    public void toggleShowNotImportant() {
+        int flags = this.getServiceInfo().flags;
+        int allFlags = AccessibilityServiceInfo.DEFAULT
+                | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                | AccessibilityServiceInfo.FEEDBACK_GENERIC
+                | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                | AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+                | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT
+                | AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS;
+
+        if(flags == allFlags) {
+            AccessibilityServiceInfo info = this.getServiceInfo();
+            info.flags = AccessibilityServiceInfo.DEFAULT
+                    | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                    | AccessibilityServiceInfo.FEEDBACK_GENERIC
+                    | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                    | AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT
+                    | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
+            this.setServiceInfo(info);
+            Log.d("INSPECTOR", "hide not important views");
+        } else {
+            AccessibilityServiceInfo info = this.getServiceInfo();
+            info.flags = allFlags;
+            this.setServiceInfo(info);
+            Log.d("INSPECTOR", "show not important views");
         }
     }
     public void sendWithScreenshot() {
@@ -154,7 +159,9 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
             JSONObject combinedJson = new JSONObject();
             combinedJson.put("screenshot", screenshot);
             combinedJson.putOpt("views", jsonObject);
-            socketConnection.sendData(combinedJson.toString());
+            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
+            SocketService.data = compress(combinedJson.toString());
+            startService(announcementIntent);
             Log.d(LOG_TAG, "message sent");
             screenshot = "";
         } catch (Exception e) {
@@ -166,7 +173,9 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         try {
             JSONObject announcementJson = new JSONObject();
             announcementJson.put("announcement", announcement);
-            socketConnection.sendData(announcementJson.toString());
+            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
+            SocketService.data = compress(announcementJson.toString());
+            startService(announcementIntent);
             Log.d(LOG_TAG, "announcement sent");
         } catch (Exception e) {
             Log.e(LOG_TAG,e.getMessage());
@@ -175,10 +184,8 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
 
     public void startCapture() {
         List<AccessibilityWindowInfo> windows = getWindows();
-        //Log.d(LOG_TAG, "intent received " + windows.size());
 
         TreeDebug.logNodeTrees(windows, _this);
-        //TreeDebug.logOrderedTraversalTree(windows);
         takeScreenshot(Display.DEFAULT_DISPLAY,
                 getApplicationContext().getMainExecutor(), new TakeScreenshotCallback() {
                     @RequiresApi(api = Build.VERSION_CODES.R)
@@ -188,7 +195,7 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                         Log.i("ScreenShotResult","onSuccess");
                         Bitmap bitmap = Bitmap.wrapHardwareBuffer(screenshotResult.getHardwareBuffer(),screenshotResult.getColorSpace());
                         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream);
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 50, byteArrayOutputStream);
                         byte[] byteArray = byteArrayOutputStream.toByteArray();
                         String encoded = Base64.encodeToString(byteArray, Base64.NO_WRAP);
                         screenshot = encoded;
@@ -201,5 +208,15 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                         sendWithoutScreenshot();
                     }
                 });
+    }
+
+    public static byte[] compress(String string) throws IOException {
+        ByteArrayOutputStream os = new ByteArrayOutputStream(string.length());
+        GZIPOutputStream gos = new GZIPOutputStream(os);
+        gos.write(string.getBytes());
+        gos.close();
+        byte[] compressed = os.toByteArray();
+        os.close();
+        return compressed;
     }
 }

@@ -4,7 +4,7 @@ plugins {
 
 android {
     compileSdk 31
-
+    namespace "com.jwlilly.accessibilityinspector"
     defaultConfig {
         applicationId "com.jwlilly.accessibilityinspector"
         minSdk 30
@@ -45,4 +45,5 @@ dependencies {
     implementation 'com.google.guava:guava:27.0.1-android'
     implementation 'org.json:json:20211205'
     implementation 'org.java-websocket:Java-WebSocket:1.5.2'
+    implementation 'com.koushikdutta.async:androidasync:3.1.0'
 }
