@@ -157,7 +157,7 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
     public void sendWithScreenshot() {
         try {
             JSONObject combinedJson = new JSONObject();
-            combinedJson.put("screenshot", screenshot);
+            //combinedJson.put("screenshot", screenshot);
             combinedJson.putOpt("views", jsonObject);
             Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
             SocketService.data = compress(combinedJson.toString());
@@ -186,28 +186,29 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         List<AccessibilityWindowInfo> windows = getWindows();
 
         TreeDebug.logNodeTrees(windows, _this);
-        takeScreenshot(Display.DEFAULT_DISPLAY,
-                getApplicationContext().getMainExecutor(), new TakeScreenshotCallback() {
-                    @RequiresApi(api = Build.VERSION_CODES.R)
-                    @Override
-                    public void onSuccess(@NonNull ScreenshotResult screenshotResult) {
-
-                        Log.i("ScreenShotResult","onSuccess");
-                        Bitmap bitmap = Bitmap.wrapHardwareBuffer(screenshotResult.getHardwareBuffer(),screenshotResult.getColorSpace());
-                        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 50, byteArrayOutputStream);
-                        byte[] byteArray = byteArrayOutputStream.toByteArray();
-                        String encoded = Base64.encodeToString(byteArray, Base64.NO_WRAP);
-                        screenshot = encoded;
-                        sendWithScreenshot();
-                    }
-
-                    @Override
-                    public void onFailure(int i) {
-                        Log.i("ScreenShotResult","onFailure code is "+ i);
-                        sendWithoutScreenshot();
-                    }
-                });
+        sendWithScreenshot();
+//        takeScreenshot(Display.DEFAULT_DISPLAY,
+//                getApplicationContext().getMainExecutor(), new TakeScreenshotCallback() {
+//                    @RequiresApi(api = Build.VERSION_CODES.R)
+//                    @Override
+//                    public void onSuccess(@NonNull ScreenshotResult screenshotResult) {
+//
+//                        Log.i("ScreenShotResult","onSuccess");
+//                        Bitmap bitmap = Bitmap.wrapHardwareBuffer(screenshotResult.getHardwareBuffer(),screenshotResult.getColorSpace());
+//                        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+//                        bitmap.compress(Bitmap.CompressFormat.PNG, 50, byteArrayOutputStream);
+//                        byte[] byteArray = byteArrayOutputStream.toByteArray();
+//                        String encoded = Base64.encodeToString(byteArray, Base64.NO_WRAP);
+//                        screenshot = encoded;
+//                        sendWithScreenshot();
+//                    }
+//
+//                    @Override
+//                    public void onFailure(int i) {
+//                        Log.i("ScreenShotResult","onFailure code is "+ i);
+//                        sendWithoutScreenshot();
+//                    }
+//                });
     }
 
     public static byte[] compress(String string) throws IOException {
