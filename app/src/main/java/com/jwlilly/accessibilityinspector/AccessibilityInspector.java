@@ -18,6 +18,8 @@ import android.view.accessibility.AccessibilityWindowInfo;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import com.google.android.accessibility.utils.TreeDebug;
+
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -158,9 +160,11 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
         try {
             JSONObject combinedJson = new JSONObject();
             //combinedJson.put("screenshot", screenshot);
-            combinedJson.putOpt("views", jsonObject);
+            jsonObject.put("name", "");
+//            JSONArray childArray = new JSONArray(jsonObject.getJSONArray("children"));
+//            combinedJson.put("children", childArray);
             Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
-            SocketService.data = compress(combinedJson.toString());
+            SocketService.data = compress(jsonObject.toString());
             startService(announcementIntent);
             Log.d(LOG_TAG, "message sent");
             screenshot = "";

@@ -25,6 +25,8 @@ import com.google.android.accessibility.utils.traversal.OrderedTraversalStrategy
 import com.jwlilly.accessibilityinspector.AccessibilityInspector;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
+
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -50,11 +52,14 @@ public class TreeDebug {
 
       // TODO: Filter and print useful window information.
 //      Log.v(TAG, "Window: " + window);
-
+      JSONObject metadata = new JSONObject();
       try {
-        windowObject.put("windowId", window.getId());
-        windowObject.put("role", "Window");
-        windowObject.put("title", window.getTitle());
+
+        metadata.put("windowId", window.getId());
+        metadata.put("role", "Window");
+        windowObject.put("name", "Window");
+        metadata.put("title", window.getTitle());
+
       } catch (JSONException e) {
         Log.e("JSON Error", e.getMessage());
       }
@@ -64,11 +69,12 @@ public class TreeDebug {
       try {
         Rect rect = new Rect();
         root.getBoundsInScreen(rect);
-        windowObject.put("x1", rect.left);
-        windowObject.put("y1", rect.top);
-        windowObject.put("x2", rect.right);
-        windowObject.put("y2", rect.bottom);
+        metadata.put("x1", rect.left);
+        metadata.put("y1", rect.top);
+        metadata.put("x2", rect.right);
+        metadata.put("y2", rect.bottom);
         windowObject.put("id", root.hashCode());
+        windowObject.put("metadata", metadata);
         AccessibilityNodeInfoUtils.recycleNodes(root);
       } catch (JSONException e) {
         Log.e("AccessibilityInspector", e.getMessage());
@@ -77,6 +83,7 @@ public class TreeDebug {
       if(window.getTitle() != null) {
         title = window.getTitle().toString();
       }
+
       boolean isEmpty = false;
       try {
         isEmpty = windowObject.getJSONArray("children").length() == 0;
@@ -371,36 +378,52 @@ public class TreeDebug {
   /** Gets a description of the properties of a node. */
   public static JSONObject nodeDebugDescriptionJson(AccessibilityNodeInfoCompat node, JSONObject childObject) {
     try {
+      Random rand = new Random();
       JSONObject jsonObject = childObject;
-      jsonObject.put("id", node.hashCode());
+      JSONObject metadata = new JSONObject();
+      jsonObject.put("id", rand.nextInt());
+      metadata.put("hashCode", node.hashCode());
       //jsonObject.put("resourceId", node.getViewIdResourceName());
       if (node.getClassName() != null) {
         if (node.getRoleDescription() != null) {
-          jsonObject.put("role", getSimpleName(node.getClassName()) + " (" + node.getRoleDescription() + ")");
-        } else {
-          jsonObject.put("role", getSimpleName(node.getClassName()));
+          metadata.put("roleDescription", node.getRoleDescription());
         }
+        metadata.put("role", getSimpleName(node.getClassName()));
+        jsonObject.put("name", getSimpleName(node.getClassName()));
       } else {
-        jsonObject.put("role", "??");
+        metadata.put("role", "??");
+        jsonObject.put("name", "??");
+      }
+
+      if(node.isContentInvalid()) {
+        metadata.put("contentInvalid", true);
+      }
+
+      if(node.getError() != null) {
+        metadata.put("errorMessage", node.getError());
+      }
+
+      if(node.getTooltipText() != null) {
+        metadata.put("tooltip", node.getTooltipText());
       }
 
       if (!node.isVisibleToUser()) {
-        jsonObject.put("visibility", "invisible");
+        metadata.put("visibility", "invisible");
       }
 
       if(!node.isImportantForAccessibility()) {
-        jsonObject.put("importantForAccessibility", false);
+        metadata.put("importantForAccessibility", false);
       }
 
       Rect rect = new Rect();
       node.getBoundsInScreen(rect);
-      jsonObject.put("x1", rect.left);
-      jsonObject.put("y1", rect.top);
-      jsonObject.put("x2", rect.right);
-      jsonObject.put("y2", rect.bottom);
+      metadata.put("x1", rect.left);
+      metadata.put("y1", rect.top);
+      metadata.put("x2", rect.right);
+      metadata.put("y2", rect.bottom);
 
       if (!TextUtils.isEmpty(node.getPaneTitle())) {
-        jsonObject.put("paneTitle", node.getPaneTitle());
+        metadata.put("paneTitle", node.getPaneTitle());
       }
       List<AccessibilityNodeInfoUtils.ClickableString> clickableStrings = AccessibilityNodeInfoUtils.getNodeClickableStrings(node);
       if(clickableStrings.size() > 0) {
@@ -410,12 +433,12 @@ public class TreeDebug {
           //List<Rect> rects = AccessibilityNodeInfoUtils.getTextLocations(node, 0, node.getText().length() - 1);
           //Log.d("AccessibilityInspector", rects.toString());
         }
-        jsonObject.put("links", jsonArray);
+        metadata.put("links", jsonArray);
       }
       @Nullable CharSequence nodeText = AccessibilityNodeInfoUtils.getText(node);
       if (nodeText != null) {
 
-        jsonObject.put("text", nodeText.toString().trim());
+        metadata.put("text", nodeText.toString().trim());
       }
       if(node.getLabeledBy() != null) {
         @Nullable CharSequence labeledByText = AccessibilityNodeInfoUtils.getText(node.getLabeledBy());
@@ -425,21 +448,21 @@ public class TreeDebug {
             labeledByText = labeledByContent;
           }
         }
-        jsonObject.put("labeledBy", labeledByText);
-        jsonObject.put("labeledById", node.getLabeledBy().hashCode());
+        metadata.put("labeledBy", labeledByText);
+        metadata.put("labeledById", node.getLabeledBy().hashCode());
       }
       if (node.getHintText() != null) {
-        jsonObject.put("hint", node.getHintText().toString().trim());
+        metadata.put("hint", node.getHintText().toString().trim());
       }
       if (node.getContentDescription() != null) {
-        jsonObject.put("content", node.getContentDescription().toString().trim());
+        metadata.put("content", node.getContentDescription().toString().trim());
       }
 
       if (AccessibilityNodeInfoUtils.getState(node) != null) {
         if(node.getStateDescription() != null) {
-          jsonObject.put("state", AccessibilityNodeInfoUtils.getState(node).toString().trim() + " (" + node.getStateDescription() + ")");
+          metadata.put("stateDescription", node.getStateDescription().toString().trim());
         } else {
-          jsonObject.put("state", AccessibilityNodeInfoUtils.getState(node).toString().trim());
+          metadata.put("state", AccessibilityNodeInfoUtils.getState(node).toString().trim());
         }
       }
       // Views that inherit Checkable can have its own state description and the log already covered
@@ -447,9 +470,9 @@ public class TreeDebug {
       // overriding by AccessibilityDelegate, we should also log it.
       if (node.isCheckable()) {
         if (node.isChecked()) {
-          jsonObject.put("checkable", "checked");
+          metadata.put("checkable", "checked");
         } else {
-          jsonObject.put("checkable", "not checked");
+          metadata.put("checkable", "not checked");
         }
 
       }
@@ -496,7 +519,7 @@ public class TreeDebug {
           }
         }
         if (stringArray.length() > 0) {
-          jsonObject.put("actions", stringArray);
+          metadata.put("actions", stringArray);
         }
       }
       JSONArray properties = new JSONArray();
@@ -537,20 +560,20 @@ public class TreeDebug {
         properties.put("disabled");
       }
       if(properties.length() > 0) {
-        jsonObject.put("properties", properties);
+        metadata.put("properties", properties);
       }
 
       if (node.getCollectionInfo() != null) {
-        jsonObject.put("collectionInfo", "Rows: " + node.getCollectionInfo().getRowCount() + ", Columns: " + node.getCollectionInfo().getColumnCount());
+        metadata.put("collectionInfo", "Rows: " + node.getCollectionInfo().getRowCount() + ", Columns: " + node.getCollectionInfo().getColumnCount());
       }
 
       if (AccessibilityNodeInfoUtils.isHeading(node)) {
-        jsonObject.put("heading", true);
+        metadata.put("heading", true);
       }
       if (node.getCollectionItemInfo() != null) {
-        jsonObject.put("collectionItemInfo", "Row: " + node.getCollectionItemInfo().getRowIndex() + ", Column: " + node.getCollectionItemInfo().getColumnIndex());
+        metadata.put("collectionItemInfo", "Row: " + node.getCollectionItemInfo().getRowIndex() + ", Column: " + node.getCollectionItemInfo().getColumnIndex());
       }
-
+      jsonObject.put("metadata", metadata);
       return jsonObject;
     } catch (JSONException e) {
       Log.e(TAG, e.getMessage());
