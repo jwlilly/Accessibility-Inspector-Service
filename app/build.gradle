@@ -7,7 +7,7 @@ android {
     namespace "com.jwlilly.accessibilityinspector"
     defaultConfig {
         applicationId "com.jwlilly.accessibilityinspector"
-        minSdk 30
+        minSdk 28
         targetSdk 31
         versionCode 1
         versionName "1.0"
