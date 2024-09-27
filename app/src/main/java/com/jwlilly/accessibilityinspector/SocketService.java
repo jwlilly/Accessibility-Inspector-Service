@@ -130,7 +130,7 @@ public class SocketService extends Service {
                             pongObject.put("message", "pong");
                             webSocket.send(pongObject.toString());
                         }
-                        if(jsonObject.has("message") && jsonObject.getString("message").equalsIgnoreCase("toggleImportant")) {
+                        if(jsonObject.has("message") && jsonObject.getString("message").equalsIgnoreCase("captureNotImportant")) {
                             Intent intent = new Intent("com.jwlilly.accessibilityinspector");
                             intent.setAction("A11yInspectorImportant");
                             sendBroadcast(intent);

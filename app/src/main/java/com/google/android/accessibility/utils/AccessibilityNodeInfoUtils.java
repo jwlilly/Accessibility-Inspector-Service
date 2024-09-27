@@ -35,6 +35,7 @@ import androidx.core.view.accessibility.AccessibilityWindowInfoCompat;
 import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
+import android.text.style.LocaleSpan;
 import android.text.style.URLSpan;
 import android.util.Pair;
 import android.view.accessibility.AccessibilityEvent;
@@ -2323,6 +2324,11 @@ public class AccessibilityNodeInfoUtils {
         node, ClickableSpan.class, input -> ClickableString.create(input.first, input.second));
   }
 
+public static List<LocaleString> getNodeLocaleStrings(AccessibilityNodeInfoCompat node) {
+    return getNodeLocaleElements(
+            node, LocaleSpan.class, input -> LocaleString.create(input.first, input.second));
+}
+
   /**
    * Gets a list of the clickable elements within a node.
    *
@@ -2365,6 +2371,32 @@ public class AccessibilityNodeInfoUtils {
     }
     return clickables;
   }
+
+    private static <E> List<E> getNodeLocaleElements(
+            AccessibilityNodeInfoCompat node,
+            Class<? extends LocaleSpan> localeType,
+            Function<Pair<String, LocaleSpan>, E> localeElementFn) {
+        List<SpannableString> spannableStrings = new ArrayList<>();
+        SpannableTraversalUtils.collectSpannableStringsWithTargetSpanInNodeDescriptionTree(
+                node, // Root node of description tree
+                localeType, // Target span class
+                spannableStrings // List to collect spannable strings
+        );
+
+        List<E> locales = new ArrayList<>(1);
+        for (SpannableString spannable : spannableStrings) {
+            for (LocaleSpan span : spannable.getSpans(0, spannable.length(), localeType)) {
+                int start = spannable.getSpanStart(span);
+                int end = spannable.getSpanEnd(span);
+                if (end > start) {
+                    char[] chars = new char[end - start];
+                    spannable.getChars(start, end, chars, 0);
+                    locales.add(localeElementFn.apply(Pair.create(new String(chars), span)));
+                }
+            }
+        }
+        return locales;
+    }
 
   public static int getMovementGranularity(AccessibilityNodeInfoCompat node) {
     // Some nodes in Webview have movement granularities even its content description/text is
@@ -2892,7 +2924,25 @@ public class AccessibilityNodeInfoUtils {
     }
   }
 
+    /**
+     * Represents a {@link LocaleSpan} and the string it spans to reduce the effort of downstream
+     * consumers; getting the spanned string is non-trivial.
+     */
+    @AutoValue
+    public abstract static class LocaleString {
+        public static LocaleString create(String string, LocaleSpan localeSpan) {
+            return new AutoValue_AccessibilityNodeInfoUtils_LocaleString(string, localeSpan);
+        }
+
+        public abstract String string();
+
+        public abstract LocaleSpan localeSpan();
+
+    }
+
   private static CharSequence printId(AccessibilityNodeInfoCompat node) {
     return String.format("Node(id=%s class=%s)", node.hashCode(), node.getClassName());
   }
+
+
 }

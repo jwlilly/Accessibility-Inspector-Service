@@ -16,15 +16,22 @@
 
 package com.google.android.accessibility.utils;
 
+import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Rect;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.accessibility.AccessibilityWindowInfo;
 import com.google.android.accessibility.utils.traversal.OrderedTraversalStrategy;
 import com.jwlilly.accessibilityinspector.AccessibilityInspector;
+
+import java.text.DecimalFormat;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 
 import org.checkerframework.checker.nullness.qual.Nullable;
@@ -34,10 +41,11 @@ import org.json.JSONObject;
 
 /** Util class to help debug Node trees. */
 public class TreeDebug {
-
+  private static AccessibilityInspector inspector = null;
   public static final String TAG = "TreeDebug";
   /** Logs the layout hierarchy of node trees for given list of windows. */
   public static void logNodeTrees(List<AccessibilityWindowInfo> windows, AccessibilityInspector receiver) {
+    inspector = receiver;
     JSONObject parentObject = new JSONObject();
     if (windows == null) {
       return;
@@ -411,9 +419,9 @@ public class TreeDebug {
         metadata.put("visibility", "invisible");
       }
 
-      if(!node.isImportantForAccessibility()) {
-        metadata.put("importantForAccessibility", false);
-      }
+
+      metadata.put("importantForAccessibility", node.isImportantForAccessibility());
+
 
       Rect rect = new Rect();
       node.getBoundsInScreen(rect);
@@ -421,6 +429,25 @@ public class TreeDebug {
       metadata.put("y1", rect.top);
       metadata.put("x2", rect.right);
       metadata.put("y2", rect.bottom);
+
+
+
+      node.getBoundsInScreen(rect);
+
+      int width = rect.right - rect.left;
+      int height = rect.bottom - rect.top;
+
+
+      float scaledWidth = convertPixelsToDp(width, inspector.getContext());
+
+      float scaledHeight = convertPixelsToDp(height, inspector.getContext());
+
+      DecimalFormat decimalFormat = new DecimalFormat("#0.00");
+
+      metadata.put("scaledWidth", decimalFormat.format(scaledWidth));
+      metadata.put("scaledHeight", decimalFormat.format(scaledHeight));
+
+      metadata.put("dpScaleFactor", convertPixelsToDp(1, inspector.getContext()));
 
       if (!TextUtils.isEmpty(node.getPaneTitle())) {
         metadata.put("paneTitle", node.getPaneTitle());
@@ -430,10 +457,17 @@ public class TreeDebug {
         JSONArray jsonArray = new JSONArray();
         for(AccessibilityNodeInfoUtils.ClickableString clickableString : clickableStrings) {
           jsonArray.put(clickableString.string());
-          //List<Rect> rects = AccessibilityNodeInfoUtils.getTextLocations(node, 0, node.getText().length() - 1);
-          //Log.d("AccessibilityInspector", rects.toString());
         }
         metadata.put("links", jsonArray);
+      }
+      List<AccessibilityNodeInfoUtils.LocaleString> localeStrings = AccessibilityNodeInfoUtils.getNodeLocaleStrings(node);
+      if(localeStrings.size() > 0) {
+        JSONArray jsonArray = new JSONArray();
+        for(AccessibilityNodeInfoUtils.LocaleString localeString : localeStrings) {
+          Log.d("TAG", "Locale " + localeString.localeSpan());
+          jsonArray.put(localeString.string() + " - " + Objects.requireNonNull(localeString.localeSpan().getLocale()).toLanguageTag());
+        }
+        metadata.put("locales", jsonArray);
       }
       @Nullable CharSequence nodeText = AccessibilityNodeInfoUtils.getText(node);
       if (nodeText != null) {
@@ -512,7 +546,7 @@ public class TreeDebug {
             actionText = "collapse";
           }
           if(action.getLabel() != null && action.getLabel().length() > 0) {
-            actionText = actionText + " (" + action.getLabel() + ")";
+            actionText = action.getLabel() + " (custom)";
           }
           if(actionText.length() > 0) {
             stringArray.put(actionText);
@@ -607,5 +641,9 @@ public class TreeDebug {
     OrderedTraversalStrategy orderTraversalStrategy = new OrderedTraversalStrategy(node);
     orderTraversalStrategy.dumpTree();
     orderTraversalStrategy.recycle();
+  }
+
+  public static float convertPixelsToDp(float px, Context context){
+    return px / ((float) context.getResources().getDisplayMetrics().densityDpi / DisplayMetrics.DENSITY_DEFAULT);
   }
 }
