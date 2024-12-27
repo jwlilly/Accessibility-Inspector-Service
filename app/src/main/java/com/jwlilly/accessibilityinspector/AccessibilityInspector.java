@@ -9,9 +9,12 @@ import android.content.IntentFilter;
 import android.os.Build;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
+
 import com.google.android.accessibility.utils.TreeDebug;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
@@ -31,6 +34,7 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
     public AccessibilityInspector _this = this;
     private JSONObject jsonObject;
 
+
     private final int allFlags = AccessibilityServiceInfo.DEFAULT
         | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         | AccessibilityServiceInfo.FEEDBACK_GENERIC
@@ -48,6 +52,22 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 }
             }
         }
+//        if(event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED) {
+//            try {
+//                AccessibilityNodeInfo info = event.getSource();
+//                boolean systemWindow = event.getPackageName().toString().contains(".android");
+//                if (!systemWindow && info != null && info.getWindow().isActive() && info.getParent() != null) {
+//                    do {
+//                        info = info.getParent();
+//                        Log.d("TAG", info.toString());
+//                    } while (info.getParent() != null);
+//                    lastKnown = info;
+//                }
+//            } catch (Exception e) {
+//                Log.d("AccessibilityInspector", "null parent");
+//            }
+//
+//        }
     }
 
     @Override

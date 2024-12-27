@@ -24,6 +24,7 @@ import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import com.google.android.accessibility.utils.traversal.OrderedTraversalStrategy;
 import com.jwlilly.accessibilityinspector.AccessibilityInspector;
@@ -58,6 +59,7 @@ public class TreeDebug {
         continue;
       }
 
+
       // TODO: Filter and print useful window information.
 //      Log.v(TAG, "Window: " + window);
       JSONObject metadata = new JSONObject();
@@ -71,8 +73,8 @@ public class TreeDebug {
       } catch (JSONException e) {
         Log.e("JSON Error", e.getMessage());
       }
-      AccessibilityNodeInfoCompat root =
-          AccessibilityNodeInfoUtils.toCompat(AccessibilityWindowInfoUtils.getRoot(window));
+      AccessibilityNodeInfo rootInfo = inspector.getRootInActiveWindow();
+      AccessibilityNodeInfoCompat root = AccessibilityNodeInfoCompat.wrap(rootInfo);
       logNodeTree(root, windowObject);
       try {
         Rect rect = new Rect();
