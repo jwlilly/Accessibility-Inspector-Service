@@ -1,6 +1,6 @@
 # Accessibility Inspector
 
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=E8XEQ2BQ5T4QU&no_recurring=0&currency_code=USD)
+[![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate/?business=E8XEQ2BQ5T4QU&no_recurring=0&currency_code=USD)
 
 Be very careful with this service on a device that contains personal information. This service exposes the accessibility node tree through a web socket connection which contains all information visible on the screen. When you are not using this service, disable it from the Accessibility settings. 
 ## What does it do?
