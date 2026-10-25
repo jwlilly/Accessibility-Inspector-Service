@@ -2,38 +2,23 @@ package com.jwlilly.accessibilityinspector;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
-import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import com.google.android.accessibility.utils.TreeDebug;
+import org.json.JSONException;
 import org.json.JSONObject;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.List;
-import java.util.Observable;
-import java.util.Observer;
-import java.util.concurrent.Executor;
-import java.util.zip.GZIPOutputStream;
 
 
-public class AccessibilityInspector extends AccessibilityService implements Observer {
+public class AccessibilityInspector extends AccessibilityService implements InspectorServer.CaptureListener {
     private final String LOG_TAG = "AccessibilityInspector";
-    private AccessibilityListener captureListener;
-
-    private AccessibilityListener importantListener;
-    public AccessibilityInspector _this = this;
-    private JSONObject jsonObject;
-
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private final int allFlags = AccessibilityServiceInfo.DEFAULT
         | AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -52,22 +37,6 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 }
             }
         }
-//        if(event.getEventType() == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED) {
-//            try {
-//                AccessibilityNodeInfo info = event.getSource();
-//                boolean systemWindow = event.getPackageName().toString().contains(".android");
-//                if (!systemWindow && info != null && info.getWindow().isActive() && info.getParent() != null) {
-//                    do {
-//                        info = info.getParent();
-//                        Log.d("TAG", info.toString());
-//                    } while (info.getParent() != null);
-//                    lastKnown = info;
-//                }
-//            } catch (Exception e) {
-//                Log.d("AccessibilityInspector", "null parent");
-//            }
-//
-//        }
     }
 
     @Override
@@ -77,17 +46,13 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
 
     @Override
     public void onDestroy() {
-        Log.d("ServerSocket", "stopping server");
+        InspectorServer.getInstance().clearCaptureListener(this);
         super.onDestroy();
     }
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        captureListener = new AccessibilityListener();
-        registerReceiver(captureListener, new IntentFilter("A11yInspector"));
-        importantListener = new AccessibilityListener();
-        registerReceiver(importantListener, new IntentFilter("A11yInspectorImportant"));
         AccessibilityServiceInfo info = new AccessibilityServiceInfo();
         info.notificationTimeout = 100;
         info.flags =
@@ -98,6 +63,7 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
                 | AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT;
         info.eventTypes = AccessibilityEvent.TYPE_ANNOUNCEMENT;
         this.setServiceInfo(info);
+        InspectorServer.getInstance().setCaptureListener(this);
     }
 
     public Context getContext() {
@@ -106,35 +72,21 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
 
     @Override
     public boolean onUnbind(Intent intent) {
-        unregisterReceiver(captureListener);
-        unregisterReceiver(importantListener);
+        InspectorServer.getInstance().clearCaptureListener(this);
         return super.onUnbind(intent);
     }
 
+    /** Called from the websocket thread; window content must be read on the main thread. */
     @Override
-    public void update(Observable observable, Object o) {
-
-    }
-
-    private class AccessibilityListener extends BroadcastReceiver {
-        @RequiresApi(api = Build.VERSION_CODES.R)
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if(intent.getAction().equalsIgnoreCase("A11yInspector")) {
-                hideNotImportant();
-                startCapture();
-            } else if(intent.getAction().equalsIgnoreCase("A11yInspectorImportant")) {
+    public void onCaptureRequested(boolean includeNotImportant) {
+        mainHandler.post(() -> {
+            if (includeNotImportant) {
                 showNotImportant();
-                startCapture();
+            } else {
+                hideNotImportant();
             }
-        }
-    }
-    @Override
-    public void takeScreenshot(int displayId, @NonNull Executor executor, @NonNull TakeScreenshotCallback callback) {
-        super.takeScreenshot(displayId, executor, callback);
-    }
-    public void sendJSON(JSONObject object) {
-        jsonObject = object;
+            startCapture();
+        });
     }
 
     public void hideNotImportant() {
@@ -161,44 +113,29 @@ public class AccessibilityInspector extends AccessibilityService implements Obse
 
     }
 
-    public void sendTree() {
-        try {
-            jsonObject.put("name", "");
-            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
-            SocketService.data = compress(jsonObject.toString());
-            startService(announcementIntent);
-            Log.d(LOG_TAG, "message sent");
-        } catch (Exception e) {
-            Log.e(LOG_TAG,e.getMessage());
-        }
-    }
     public void sendAnnouncement(String announcement) {
         try {
             JSONObject announcementJson = new JSONObject();
+            announcementJson.put("type", "announcement");
             announcementJson.put("announcement", announcement);
-            Intent announcementIntent = new Intent(SocketService.BROADCAST_MESSAGE, null, this, SocketService.class);
-            SocketService.data = compress(announcementJson.toString());
-            startService(announcementIntent);
+            InspectorServer.getInstance().broadcast(announcementJson);
             Log.d(LOG_TAG, "announcement sent");
-        } catch (Exception e) {
-            Log.e(LOG_TAG,e.getMessage());
+        } catch (JSONException e) {
+            Log.e(LOG_TAG, "could not send announcement", e);
         }
     }
 
     public void startCapture() {
         List<AccessibilityWindowInfo> windows = getWindows();
-
-        TreeDebug.logNodeTrees(windows, _this);
-        sendTree();
-    }
-
-    public static byte[] compress(String string) throws IOException {
-        ByteArrayOutputStream os = new ByteArrayOutputStream(string.length());
-        GZIPOutputStream gos = new GZIPOutputStream(os);
-        gos.write(string.getBytes());
-        gos.close();
-        byte[] compressed = os.toByteArray();
-        os.close();
-        return compressed;
+        try {
+            JSONObject tree = TreeDebug.buildNodeTrees(windows, this);
+            tree.put("type", "tree");
+            tree.put("name", "");
+            InspectorServer.getInstance().broadcast(tree);
+            Log.d(LOG_TAG, "tree sent");
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "capture failed", e);
+            InspectorServer.getInstance().broadcast(InspectorServer.errorMessage("Capture failed: " + e.getMessage()));
+        }
     }
 }

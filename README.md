@@ -8,17 +8,24 @@ The app is a web socket service that is enabled when the accessibility service i
 I recommend setting up ADB forward and connecting your device directly to your computer with USB debugging enabled. Using `adb forward tcp:38301 tcp:38301` to forward port 38301 to your computer provides a stable TCP connection through the USB (or VM if you are using an Android VM) that you can access using `127.0.0.1:38301`.
 
 ## Commands
+Every message the service sends is a JSON object with a `type` of `tree`, `announcement`, `version`, `pong` or `error`.
+
 ``` json
 {"message":"capture"}
 ```
-Triggers a capture of the accessibility tree and will return a json with a screenshot in base64 along with the accessibility tree and _most_ of the available properties for each accessibility node. 
+Triggers a capture of the accessibility tree (`{"type":"tree","children":[...]}`) with _most_ of the available properties for each accessibility node, including the API 33-36 additions (required, tri-state checked, expanded state, supplemental description, container title, and more) when the device supports them. `{"message":"captureNotImportant"}` also includes views that are not important for accessibility. If the accessibility service isn't enabled, the reply is `{"type":"error","error":"..."}`.
+
+``` json
+{"message":"version"}
+```
+Returns `{"type":"version","versionCode":3,"versionName":"1.3.0","protocolVersion":2,"sdkInt":36}`. The inspector app uses this to tell users when the companion app needs to be updated.
 
 ``` json
 {"message":"ping"}
 ```
-The device responds with "pong". Useful for debugging the connection or keeping the connection alive for extended periods. 
+The device responds with `{"type":"pong","message":"pong"}`. Useful for debugging the connection or keeping the connection alive for extended periods. 
 
-The service will also automatically send any announcements triggered using [`View.announceForAccessibility()`](https://developer.android.com/reference/android/view/View#announceForAccessibility(java.lang.CharSequence)) in the form of `{"announcement":[message]}`.
+The service will also automatically send any announcements triggered using [`View.announceForAccessibility()`](https://developer.android.com/reference/android/view/View#announceForAccessibility(java.lang.CharSequence)) in the form of `{"type":"announcement","announcement":[message]}`.
 
 ## Known issues
 The web socket server is a little bit buggy. Future versions of this will rely on a websocket server running on the computer with the device simply acting as a web socket client. Sometimes the web socket server will stop responding and the process will not be killed when the accessibility service is killed. If this happens, you can try killing the service with `adb kill [service]` or rebooting the device. 

@@ -18,6 +18,7 @@ package com.google.android.accessibility.utils;
 
 import android.content.Context;
 import android.graphics.Rect;
+import android.os.Build;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
@@ -27,10 +28,10 @@ import android.view.accessibility.AccessibilityWindowInfo;
 import com.google.android.accessibility.utils.traversal.OrderedTraversalStrategy;
 import com.jwlilly.accessibilityinspector.AccessibilityInspector;
 import java.text.DecimalFormat;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Random;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -40,12 +41,17 @@ import org.json.JSONObject;
 public class TreeDebug {
   private static AccessibilityInspector inspector = null;
   public static final String TAG = "TreeDebug";
-  /** Logs the layout hierarchy of node trees for given list of windows. */
-  public static void logNodeTrees(List<AccessibilityWindowInfo> windows, AccessibilityInspector receiver) {
+  /** Ids only need to be unique within one capture; 0 is reserved for the tree root. */
+  private static int nextNodeId = 1;
+
+  /** Builds the JSON layout hierarchy of node trees for the given list of windows. */
+  public static JSONObject buildNodeTrees(@Nullable List<AccessibilityWindowInfo> windows, AccessibilityInspector receiver) throws JSONException {
     inspector = receiver;
+    nextNodeId = 1;
     JSONObject parentObject = new JSONObject();
     if (windows == null) {
-      return;
+      parentObject.put("children", new JSONArray());
+      return parentObject;
     }
     //Log.v(TAG, "------------Node tree------------");
     JSONArray windowArray = new JSONArray();
@@ -69,8 +75,16 @@ public class TreeDebug {
       } catch (JSONException e) {
         Log.e("JSON Error", e.getMessage());
       }
-      AccessibilityNodeInfo rootInfo = inspector.getRootInActiveWindow();
+      AccessibilityNodeInfo rootInfo = window.getRoot();
+      if (rootInfo == null) {
+        continue;
+      }
       AccessibilityNodeInfoCompat root = AccessibilityNodeInfoCompat.wrap(rootInfo);
+      try {
+        windowObject.put("id", nextNodeId++);
+      } catch (JSONException e) {
+        Log.e("AccessibilityInspector", e.getMessage());
+      }
       logNodeTree(root, windowObject);
       try {
         Rect rect = new Rect();
@@ -79,7 +93,6 @@ public class TreeDebug {
         metadata.put("y1", rect.top);
         metadata.put("x2", rect.right);
         metadata.put("y2", rect.bottom);
-        windowObject.put("id", root.hashCode());
         windowObject.put("metadata", metadata);
         AccessibilityNodeInfoUtils.recycleNodes(root);
       } catch (JSONException e) {
@@ -110,17 +123,9 @@ public class TreeDebug {
         windowArray.put(windowObject);
       }
     }
-    try {
-      parentObject.put("children", windowArray);
-//      String json = parentObject.toString();
-//      for(int i = 0; i < json.length(); i += 1024) {
-//        Log.d("DebugJSON", json.substring(i, Math.min(i + 1024, json.length())));
-//      }
-      receiver.sendJSON(parentObject);
-      parentObject = new JSONObject();
-    } catch (JSONException e) {
-      Log.e("JSON Error", e.getMessage());
-    }
+    parentObject.put("children", windowArray);
+    parentObject.put("sdkInt", Build.VERSION.SDK_INT);
+    return parentObject;
   }
 
   /** Logs the layout hierarchy of node tree for using the input node as the root. */
@@ -384,10 +389,9 @@ public class TreeDebug {
   /** Gets a description of the properties of a node. */
   public static JSONObject nodeDebugDescriptionJson(AccessibilityNodeInfoCompat node, JSONObject childObject) {
     try {
-      Random rand = new Random();
       JSONObject jsonObject = childObject;
       JSONObject metadata = new JSONObject();
-      jsonObject.put("id", rand.nextInt());
+      jsonObject.put("id", nextNodeId++);
       metadata.put("hashCode", node.hashCode());
       if (node.getViewIdResourceName() != null) {
         metadata.put("resourceId", node.getViewIdResourceName());
@@ -607,11 +611,107 @@ public class TreeDebug {
       if (node.getCollectionItemInfo() != null) {
         metadata.put("collectionItemInfo", "Row: " + node.getCollectionItemInfo().getRowIndex() + ", Column: " + node.getCollectionItemInfo().getColumnIndex());
       }
+      putRecentApiProperties(node, metadata);
       jsonObject.put("metadata", metadata);
       return jsonObject;
     } catch (JSONException e) {
       Log.e(TAG, e.getMessage());
       return null;
+    }
+  }
+
+  /**
+   * Adds AccessibilityNodeInfo properties introduced in API 33-36. Properties the device's API level
+   * doesn't support are left out so the inspector can tell "unsupported" apart from "false".
+   */
+  private static void putRecentApiProperties(AccessibilityNodeInfoCompat node, JSONObject metadata)
+      throws JSONException {
+    AccessibilityNodeInfo info = node.unwrap();
+    if (info == null) {
+      return;
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      metadata.put("textSelectable", info.isTextSelectable());
+      if (info.getUniqueId() != null) {
+        metadata.put("uniqueId", info.getUniqueId());
+      }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      metadata.put("accessibilityDataSensitive", info.isAccessibilityDataSensitive());
+      metadata.put("requestInitialAccessibilityFocus", info.hasRequestInitialAccessibilityFocus());
+      if (!TextUtils.isEmpty(info.getContainerTitle())) {
+        metadata.put("containerTitle", info.getContainerTitle().toString().trim());
+      }
+      Duration minDuration = info.getMinDurationBetweenContentChanges();
+      if (minDuration != null && !minDuration.isZero()) {
+        metadata.put("minDurationBetweenContentChanges", minDuration.toMillis());
+      }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+      metadata.put("granularScrollingSupported", info.isGranularScrollingSupported());
+      AccessibilityNodeInfo.CollectionInfo collectionInfo = info.getCollectionInfo();
+      if (collectionInfo != null) {
+        if (collectionInfo.getItemCount() != AccessibilityNodeInfo.CollectionInfo.UNDEFINED) {
+          metadata.put("collectionItemCount", collectionInfo.getItemCount());
+        }
+        if (collectionInfo.getImportantForAccessibilityItemCount()
+            != AccessibilityNodeInfo.CollectionInfo.UNDEFINED) {
+          metadata.put(
+              "collectionImportantItemCount",
+              collectionInfo.getImportantForAccessibilityItemCount());
+        }
+      }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+      metadata.put("fieldRequired", info.isFieldRequired());
+      if (info.isCheckable()) {
+        metadata.put("checkedState", checkedStateName(info.getChecked()));
+      }
+      if (info.getExpandedState() != AccessibilityNodeInfo.EXPANDED_STATE_UNDEFINED) {
+        metadata.put("expandedState", expandedStateName(info.getExpandedState()));
+      }
+      if (!TextUtils.isEmpty(info.getSupplementalDescription())) {
+        metadata.put(
+            "supplementalDescription", info.getSupplementalDescription().toString().trim());
+      }
+      List<AccessibilityNodeInfo> labels = info.getLabeledByList();
+      if (labels.size() > 1) {
+        JSONArray labelArray = new JSONArray();
+        for (AccessibilityNodeInfo label : labels) {
+          CharSequence labelText =
+              !TextUtils.isEmpty(label.getContentDescription())
+                  ? label.getContentDescription()
+                  : label.getText();
+          if (!TextUtils.isEmpty(labelText)) {
+            labelArray.put(labelText.toString().trim());
+          }
+        }
+        metadata.put("labeledByList", labelArray);
+      }
+    }
+  }
+
+  private static String checkedStateName(int checkedState) {
+    switch (checkedState) {
+      case AccessibilityNodeInfo.CHECKED_STATE_TRUE:
+        return "checked";
+      case AccessibilityNodeInfo.CHECKED_STATE_PARTIAL:
+        return "partial";
+      default:
+        return "not checked";
+    }
+  }
+
+  private static String expandedStateName(int expandedState) {
+    switch (expandedState) {
+      case AccessibilityNodeInfo.EXPANDED_STATE_COLLAPSED:
+        return "collapsed";
+      case AccessibilityNodeInfo.EXPANDED_STATE_PARTIAL:
+        return "partial";
+      case AccessibilityNodeInfo.EXPANDED_STATE_FULL:
+        return "full";
+      default:
+        return "undefined";
     }
   }
 
